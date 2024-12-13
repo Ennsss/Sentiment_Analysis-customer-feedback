@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analysis</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Sentiment Analysis</h1>
+        <form action="/analyze" method="POST">
+            <textarea name="review" rows="5" placeholder="Enter your review here..." required></textarea>
+            <button type="submit">Analyze</button>
+        </form>
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        {% if review %}
+            <div class="result">
+                <h2>Review:</h2>
+                <p>{{ review }}</p>
+                <h2>Predicted Sentiment:</h2>
+                <p>{{ sentiment }}</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>
