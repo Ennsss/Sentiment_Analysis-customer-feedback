@@ -2,6 +2,8 @@
 
 An analysis workspace for the original Apple-product review sentiment classifier. The new frontend makes its actual model outputs easier to inspect, compare, and export without changing the trained weights.
 
+Live application: https://signal-sentiment-frederick.vercel.app
+
 ## Included
 
 - Single-review inference and CSV batch analysis (up to 100 reviews).
@@ -30,7 +32,7 @@ Open http://127.0.0.1:5051. Initial inference loads the model and may take longe
 waitress-serve --listen=127.0.0.1:5051 app:app
 ```
 
-The original `requirements.txt` records the older environment. The isolated `requirements-web.txt` supplies a current Python-compatible serving runtime. Legacy Keras loading and the original tokenizer pickle module are handled explicitly in `inference.py`. scikit-learn stays pinned to 1.6.0, the saved label encoder's version.
+The original `requirements.txt` records the older environment. The isolated `requirements-web.txt` supplies a Python-compatible serving runtime. Legacy Keras loading and the original tokenizer pickle module are handled explicitly in `inference.py`. scikit-learn 1.6.1 loads the original 1.6.0 label encoder with a version warning; the real-model test verifies all five original classes and finite scores. Python 3.13 also produces upstream TensorFlow/gast deprecation warnings. Neither warning is an evaluation of model accuracy.
 
 ## CSV and API
 
@@ -39,6 +41,7 @@ A UTF-8 CSV must contain a `review` column. Quotes, commas, and multiline quoted
 ```http
 POST /api/analyze
 Content-Type: application/json
+X-Signal-Request: 1
 
 {"reviews":["The battery lasts all day and the camera is excellent."]}
 ```
@@ -57,7 +60,13 @@ No held-out evaluation dataset or metrics artifact is present, so the interface 
 
 Inference runs on this application's server, not an external AI service. Review text is held in memory for the request. Session history is kept only in the current browser tab, is not saved to browser storage, and disappears on reload. Uploaded files are not saved. No submitted text is logged by application code.
 
-This local portfolio app has no user authentication or shared review database. Before public/multi-user hosting, add access control, request/compute rate limiting, HTTPS, appropriate retention rules, and resource isolation. Model inference is serialized to avoid simultaneous access to the legacy model. Large public workloads need a queue rather than unbounded HTTP requests. Never load pickled model artifacts from untrusted sources.
+This public portfolio app has no user authentication or shared review database. Use non-sensitive sample text, not confidential customer records. On Vercel, inference requests require a custom header and reject cross-site origins. Per-worker, per-IP limits allow six analyses per minute and 60 per hour. This in-memory throttle resets when a worker restarts and is not a distributed quota; add a shared limiter, access control, and a bounded job queue before a larger rollout. Inference is serialized per worker to avoid simultaneous access to the legacy model. Never load pickled model artifacts from untrusted sources.
+
+## Vercel
+
+The deployment uses Python 3.12 and the dependencies in `pyproject.toml`, not the legacy training environment. `build_web.py` retrieves the original public Git LFS model from a pinned repository commit and verifies its full SHA-256 digest before deployment. Weights are never retrained or replaced. Only browser assets are published under `public/static`; model artifacts stay in the server bundle.
+
+The TensorFlow bundle requires Vercel's Large Functions beta, enabled with `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` in the production environment. No paid plan upgrade is selected. Free-tier quotas still apply; first inference on a cold worker can be slow. Run `vercel deploy --prod` from this folder. Git-based preview deployments need the same beta setting to build the model runtime.
 
 ## Verify
 
@@ -69,7 +78,7 @@ python -m pytest tests -q
 python -m pytest tests -q
 ```
 
-The API tests cover CSV parsing, blank/invalid input, limits, and model failure. The opt-in integration test runs the real artifact and checks all five scores, version, out-of-vocabulary input, and truncation flags.
+The API tests cover CSV parsing, blank/invalid input, size limits, model failure, cross-origin rejection, the production header, and per-worker throttling. The opt-in integration test runs the real artifact and checks all five scores, version, out-of-vocabulary input, and truncation flags.
 
 ## Credits
 

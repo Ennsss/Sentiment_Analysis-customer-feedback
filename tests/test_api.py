@@ -75,6 +75,32 @@ def test_upload_limit(client):
     assert response.status_code == 413
 
 
+def test_cross_origin_rejected(client):
+    response = client.post(
+        "/api/analyze",
+        json={"reviews": ["test"]},
+        headers={"Origin": "https://untrusted.example"},
+    )
+    assert response.status_code == 403
+
+
+def test_production_request_header_and_throttling(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    client = create_app(StubEngine()).test_client()
+    assert client.post("/api/analyze", json={"reviews": ["test"]}).status_code == 403
+    headers = {"X-Signal-Request": "1", "Origin": "http://localhost"}
+    for _ in range(6):
+        assert (
+            client.post(
+                "/api/analyze", json={"reviews": ["test"]}, headers=headers
+            ).status_code
+            == 200
+        )
+    response = client.post("/api/analyze", json={"reviews": ["test"]}, headers=headers)
+    assert response.status_code == 429
+    assert response.is_json
+
+
 def test_missing_model_returns_error_not_fake_predictions():
     class BrokenEngine(StubEngine):
         def analyze(self, reviews):

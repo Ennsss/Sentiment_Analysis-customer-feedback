@@ -2,7 +2,10 @@
 
 import csv
 import io
+import os
+from urllib.parse import urlsplit
 from flask import Flask, jsonify, render_template, request
+from flask_limiter import Limiter
 from inference import SentimentEngine
 
 
@@ -10,11 +13,41 @@ def create_app(engine=None):
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
     model = engine or SentimentEngine()
+    production = os.environ.get("VERCEL") == "1"
+
+    def client_ip():
+        if production:
+            return (
+                request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+                .split(",")[0]
+                .strip()
+            )
+        return request.remote_addr or "unknown"
+
+    limiter = Limiter(client_ip, app=app, storage_uri="memory://", enabled=production)
+    app.extensions["signal_limiter"] = limiter
+
+    @app.before_request
+    def same_origin():
+        if request.method == "POST":
+            host = urlsplit(request.host_url)
+            origin = request.headers.get("Origin")
+            if request.headers.get("Sec-Fetch-Site") == "cross-site" or (
+                origin and origin != f"{host.scheme}://{host.netloc}"
+            ):
+                return jsonify(error="Cross-site requests are not allowed."), 403
+            if production and request.headers.get("X-Signal-Request") != "1":
+                return jsonify(
+                    error="Open the Signal workspace to submit a review."
+                ), 403
 
     @app.after_request
     def headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["X-Frame-Options"] = "DENY"
+        if production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         )
@@ -31,6 +64,7 @@ def create_app(engine=None):
         return jsonify(model.metadata())
 
     @app.post("/api/analyze")
+    @limiter.limit("6 per minute; 60 per hour")
     def analyze():
         if "file" in request.files:
             try:
@@ -68,6 +102,16 @@ def create_app(engine=None):
         return jsonify(
             error="The upload is too large. Use a CSV smaller than 1 MB."
         ), 413
+
+    @app.errorhandler(429)
+    def rate_limit(_error):
+        return (
+            jsonify(
+                error="Too many analyses. Please wait a minute before trying again."
+            ),
+            429,
+            {"Retry-After": "60"},
+        )
 
     return app
 

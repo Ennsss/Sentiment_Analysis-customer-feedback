@@ -133,7 +133,7 @@ $("#analyze-form").onsubmit = async (e) => {
   try {
     const response = await fetch("/api/analyze", {
       method: "POST",
-      headers,
+      headers: {...headers, 'X-Signal-Request': '1'},
       body,
     });
     const data = await response.json();
