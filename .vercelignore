@@ -1,0 +1,12 @@
+*
+!pyproject.toml
+!vercel.json
+!build_web.py
+!app.py
+!inference.py
+!templates
+!templates/**
+!static
+!static/**
+!tokenizer.pickle
+!label_encoder.pickle
